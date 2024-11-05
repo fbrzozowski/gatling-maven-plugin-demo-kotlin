@@ -6,6 +6,7 @@ import io.gatling.javaapi.core.CoreDsl.atOnceUsers
 import io.gatling.javaapi.core.CoreDsl.exec
 import io.gatling.javaapi.core.CoreDsl.jsonPath
 import io.gatling.javaapi.core.CoreDsl.pause
+import io.gatling.javaapi.core.CoreDsl.repeat
 import io.gatling.javaapi.core.CoreDsl.scenario
 import io.gatling.javaapi.core.Simulation
 import io.gatling.javaapi.http.HttpDsl.http
@@ -47,6 +48,27 @@ object Category {
             .check(jsonPath("$.name").`is`("Everyone"))
 }
 
+object Product {
+    fun list() = http("List Products")
+        .get("/api/product?category=7")
+
+    fun update() = http("Update Product")
+        .put("/api/product/17")
+        .headers(authHeader)
+        .body(RawFileBody("0004_request.json"))
+        .check(jsonPath("$.price").`is`("15.99"))
+
+    fun get() = http("Get Product")
+        .get("/api/product/33")
+
+    fun create() = repeat(3, "count").on(
+        http("Create Product #{count}")
+            .post("/api/product")
+            .headers(authHeader)
+            .body(RawFileBody("create_product_#{count}.json"))
+    )
+}
+
 class DemoStoreSimulation : Simulation() {
 
     private val httpProtocol = http
@@ -58,33 +80,15 @@ class DemoStoreSimulation : Simulation() {
         .exec(
             Category.list(),
             pause(1),
-            http("List Products")
-                .get("/api/product?category=7"),
+            Product.list(),
             pause(1),
-            http("Get Product")
-                .get("/api/product/33"),
+            Product.get(),
             pause(1),
             Auth.authenticate(),
             pause(1),
-            http("Update Product")
-                .put("/api/product/17")
-                .headers(authHeader)
-                .body(RawFileBody("0004_request.json")),
+            Product.update(),
             pause(1),
-            http("Create Product")
-                .post("/api/product")
-                .headers(authHeader)
-                .body(RawFileBody("0005_request.json")),
-            pause(1),
-            http("Create Product 2")
-                .post("/api/product")
-                .headers(authHeader)
-                .body(RawFileBody("0006_request.json")),
-            pause(1),
-            http("Create Product 3")
-                .post("/api/product")
-                .headers(authHeader)
-                .body(RawFileBody("0007_request.json")),
+            Product.create(),
             pause(1),
             Category.update()
         )
