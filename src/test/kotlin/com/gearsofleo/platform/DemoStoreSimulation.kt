@@ -1,19 +1,20 @@
 package com.gearsofleo.platform
 
 import io.gatling.javaapi.core.CoreDsl.ElFileBody
-import io.gatling.javaapi.core.CoreDsl.RawFileBody
 import io.gatling.javaapi.core.CoreDsl.StringBody
 import io.gatling.javaapi.core.CoreDsl.atOnceUsers
 import io.gatling.javaapi.core.CoreDsl.csv
 import io.gatling.javaapi.core.CoreDsl.doIf
 import io.gatling.javaapi.core.CoreDsl.exec
 import io.gatling.javaapi.core.CoreDsl.feed
+import io.gatling.javaapi.core.CoreDsl.jmesPath
 import io.gatling.javaapi.core.CoreDsl.jsonPath
 import io.gatling.javaapi.core.CoreDsl.pause
 import io.gatling.javaapi.core.CoreDsl.scenario
 import io.gatling.javaapi.core.Simulation
 import io.gatling.javaapi.http.HttpDsl.http
 import io.gatling.javaapi.http.HttpDsl.status
+import kotlin.random.Random
 
 private val authHeader = mapOf(
     "authorization" to "Bearer #{jwtToken}"
@@ -74,20 +75,46 @@ object Product {
             .exec(
                 http("List Products")
                     .get("/api/product?category=#{categoryId}")
+                    .check(jmesPath("[*].id").ofList().saveAs("allProducts"))
+            )
+
+    fun get() =
+        exec { session ->
+            val allProducts = session.getList<Int>("allProducts")
+            return@exec session.set("productId", allProducts[Random.nextInt(allProducts.size)])
+        }.exec { session ->
+            println("All product ids: ${session.getString("allProducts")}")
+            println("Selected product id: ${session.getString("productId")}")
+            return@exec session
+        }
+            .exec(
+                http("Get Product")
+                    .get("/api/product/#{productId}")
+                    .check(jmesPath("id").ofInt().isEL("#{productId}"))
+                    .check(jmesPath("@").ofMap().saveAs("product"))
             )
 
     fun update() =
         exec(Auth.authenticate())
+            .exec { session ->
+                val product: Map<String, Any> = session.getMap("product")
+
+                return@exec session
+                    .set("productCategoryId", product.get("categoryId"))
+                    .set("productName", product.get("name"))
+                    .set("productDescription", product.get("description"))
+                    .set("productImage", product.get("image"))
+                    .set("productPrice", product.get("price"))
+                    .set("productId", product.get("id"))
+            }
             .exec(
-                http("Update Product")
-                    .put("/api/product/17")
+                http("Update Product #{productName}")
+                    .put("/api/product/#{productId}")
                     .headers(authHeader)
-                    .body(RawFileBody("0004_request.json"))
-                    .check(jsonPath("$.price").`is`("15.99"))
+                    .body(ElFileBody("create_product.json"))
+                    .check(jsonPath("$.price").isEL("#{productPrice}"))
             )
 
-    fun get() = http("Get Product")
-        .get("/api/product/33")
 
     fun create() = exec(Auth.authenticate())
         .repeat(4, "count").on(
