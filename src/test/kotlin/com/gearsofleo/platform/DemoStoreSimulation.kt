@@ -50,7 +50,9 @@ object Category {
 
 object Product {
     fun list() = http("List Products")
-        .get("/api/product?category=7")
+        .get("/api/product?category=7").check(
+            jsonPath("$[?(@.categoryId != \"7\")]").notExists()
+        )
 
     fun update() = http("Update Product")
         .put("/api/product/17")
