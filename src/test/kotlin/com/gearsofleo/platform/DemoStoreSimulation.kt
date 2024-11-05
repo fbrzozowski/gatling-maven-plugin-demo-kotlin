@@ -11,6 +11,10 @@ import io.gatling.javaapi.core.Simulation
 import io.gatling.javaapi.http.HttpDsl.http
 import io.gatling.javaapi.http.HttpDsl.status
 
+private val authHeader = mapOf(
+    "authorization" to "Bearer #{jwtToken}"
+)
+
 object Auth {
     fun authenticate() = exec(
         http("Authenticate")
@@ -30,6 +34,19 @@ object Auth {
     )
 }
 
+object Category {
+    fun list() = http("List Category")
+        .get("/api/category")
+        .check(jsonPath("$[?(@.id == 6)].name").`is`("For Her"))
+
+    fun update() =
+        http("Update Category")
+            .put("/api/category/7")
+            .headers(authHeader)
+            .body(RawFileBody("0008_request.json"))
+            .check(jsonPath("$.name").`is`("Everyone"))
+}
+
 class DemoStoreSimulation : Simulation() {
 
     private val httpProtocol = http
@@ -37,14 +54,9 @@ class DemoStoreSimulation : Simulation() {
         .contentTypeHeader("application/json")
         .acceptHeader("application/json")
 
-    private val authHeader = mapOf(
-        "authorization" to "Bearer #{jwtToken}"
-    )
-
     private val scn = scenario("DemoStoreSimulation")
         .exec(
-            http("List Category")
-                .get("/api/category"),
+            Category.list(),
             pause(1),
             http("List Products")
                 .get("/api/product?category=7"),
@@ -74,10 +86,7 @@ class DemoStoreSimulation : Simulation() {
                 .headers(authHeader)
                 .body(RawFileBody("0007_request.json")),
             pause(1),
-            http("Update Category")
-                .put("/api/category/7")
-                .headers(authHeader)
-                .body(RawFileBody("0008_request.json"))
+            Category.update()
         )
 
     init {
