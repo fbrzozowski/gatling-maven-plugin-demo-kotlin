@@ -1,10 +1,13 @@
 package com.gearsofleo.platform
 
+import io.gatling.javaapi.core.CoreDsl.ElFileBody
 import io.gatling.javaapi.core.CoreDsl.RawFileBody
 import io.gatling.javaapi.core.CoreDsl.StringBody
 import io.gatling.javaapi.core.CoreDsl.atOnceUsers
+import io.gatling.javaapi.core.CoreDsl.csv
 import io.gatling.javaapi.core.CoreDsl.doIf
 import io.gatling.javaapi.core.CoreDsl.exec
+import io.gatling.javaapi.core.CoreDsl.feed
 import io.gatling.javaapi.core.CoreDsl.jsonPath
 import io.gatling.javaapi.core.CoreDsl.pause
 import io.gatling.javaapi.core.CoreDsl.scenario
@@ -42,24 +45,36 @@ object Auth {
 }
 
 object Category {
-    fun list() = http("List Category")
-        .get("/api/category")
-        .check(jsonPath("$[?(@.id == 6)].name").`is`("For Her"))
+    val categoryFeeder = csv("data/categories.csv").random()
+    fun list() =
+        feed(categoryFeeder)
+            .exec(
+                http("List Category")
+                    .get("/api/category")
+                    .check(jsonPath("$[?(@.id == #{categoryId})].name").isEL("#{categoryName}"))
+            )
 
     fun update() =
-        exec(Auth.authenticate())
+        feed(categoryFeeder)
+            .exec(Auth.authenticate())
             .exec(
                 http("Update Category")
-                    .put("/api/category/7")
+                    .put("/api/category/#{categoryId}")
                     .headers(authHeader)
-                    .body(RawFileBody("0008_request.json"))
-                    .check(jsonPath("$.name").`is`("Everyone"))
+                    .body(StringBody("{\"name\": \"#{categoryName}\"}"))
+                    .check(jsonPath("$.name").isEL("#{categoryName}"))
             )
 }
 
 object Product {
-    fun list() = http("List Products")
-        .get("/api/product?category=7")
+    private val productFeeder = csv("data/products.csv").circular()
+
+    fun list() =
+        feed(Category.categoryFeeder)
+            .exec(
+                http("List Products")
+                    .get("/api/product?category=#{categoryId}")
+            )
 
     fun update() =
         exec(Auth.authenticate())
@@ -74,14 +89,17 @@ object Product {
     fun get() = http("Get Product")
         .get("/api/product/33")
 
-    fun create() =
-        exec(Auth.authenticate())
-            .repeat(3, "count").on(
-                http("Create Product #{count}")
-                    .post("/api/product")
-                    .headers(authHeader)
-                    .body(RawFileBody("create_product_#{count}.json"))
-            )
+    fun create() = exec(Auth.authenticate())
+        .repeat(4, "count").on(
+            feed(productFeeder)
+                .exec(
+                    http("Create Product #{productName}")
+                        .post("/api/product")
+                        .headers(authHeader)
+                        .body(ElFileBody("create_product.json"))
+                        .check(jsonPath("$.price").isEL("#{productPrice}"))
+                )
+        )
 }
 
 class DemoStoreSimulation : Simulation() {
