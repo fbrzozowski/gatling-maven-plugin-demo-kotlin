@@ -1,11 +1,34 @@
 package com.gearsofleo.platform
 
 import io.gatling.javaapi.core.CoreDsl.RawFileBody
+import io.gatling.javaapi.core.CoreDsl.StringBody
 import io.gatling.javaapi.core.CoreDsl.atOnceUsers
+import io.gatling.javaapi.core.CoreDsl.exec
+import io.gatling.javaapi.core.CoreDsl.jsonPath
 import io.gatling.javaapi.core.CoreDsl.pause
 import io.gatling.javaapi.core.CoreDsl.scenario
 import io.gatling.javaapi.core.Simulation
 import io.gatling.javaapi.http.HttpDsl.http
+import io.gatling.javaapi.http.HttpDsl.status
+
+object Auth {
+    fun authenticate() = exec(
+        http("Authenticate")
+            .post("/api/authenticate")
+            .body(
+                StringBody(
+                    """
+                   {
+                        "username": "admin",
+                        "password": "admin"
+                    } 
+                """.trimIndent()
+                )
+            )
+            .check(status().shouldBe(200))
+            .check(jsonPath("$.token").saveAs("jwtToken")),
+    )
+}
 
 class DemoStoreSimulation : Simulation() {
 
@@ -15,10 +38,8 @@ class DemoStoreSimulation : Simulation() {
         .acceptHeader("application/json")
 
     private val authHeader = mapOf(
-        "authorization" to "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTczMDgyMjExMSwiZXhwIjoxNzMwODI1NzExfQ.iylhGp0OCbsvAzaqdiLANRmVTtynSFat-sKwebBD8kU"
+        "authorization" to "Bearer #{jwtToken}"
     )
-
-    //TODO: Refactor the scenario in a way that Authentication part is separate static method
 
     private val scn = scenario("DemoStoreSimulation")
         .exec(
@@ -31,9 +52,7 @@ class DemoStoreSimulation : Simulation() {
             http("Get Product")
                 .get("/api/product/33"),
             pause(1),
-            http("Authenticate")
-                .post("/api/authenticate")
-                .body(RawFileBody("0003_request.json")),
+            Auth.authenticate(),
             pause(1),
             http("Update Product")
                 .put("/api/product/17")
